@@ -1,4 +1,4 @@
-name: Run Python Validator
+name: Run Validator
 
 on:
   push:
@@ -16,10 +16,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Run validator
-        run: python validator.py
+      - name: Run validator script
+        run: |
+          if [ -f validator.py ]; then python validator.py;
+          elif [ -f validator.sh ]; then bash validator.sh;
+          elif [ -f validator.ps1 ]; then pwsh validator.ps1;
+          else echo "No validator script found."; fi
