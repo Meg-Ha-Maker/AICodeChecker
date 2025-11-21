@@ -1,0 +1,55 @@
+name: API Validator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get changed files in this PR
+        id: changed
+        run: |
+          CHANGED=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --jq '.[].filename')
+          printf '%s\n' "$CHANGED" > changed_files.txt
+          echo "files=$(jq -R -s -c 'split(\"\\n\")[:-1]' changed_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Prepare payload JSON with file contents
+        id: prepare
+        run: |
+          FILE_LIST=${{ steps.changed.outputs.files }}
+
+          # Create JSON object { "filename": "content" }
+          echo "{}" > payload.json
+          for f in $(jq -r '.[]' <<< "$FILE_LIST"); do
+            if [ -f "$f" ]; then
+              CONTENT=$(sed 's/"/\\"/g' "$f" | tr -d '\r' | awk '{printf "%s\\n", $0}')
+              jq --arg file "$f" --arg content "$CONTENT" '. + {($file): $content}' payload.json > tmp.json && mv tmp.json payload.json
+            fi
+          done
+
+      - name: Call external API
+        id: api
+        run: |
+          # Replace with your API URL
+          API_URL="https://your-api.com/validate"
+
+          echo "Sending changed files to API..."
+          RESPONSE=$(curl -s -X POST -H "Content-Type: application/json" -d @payload.json "$API_URL")
+          
+          echo "API response: $RESPONSE"
+          echo "result=$(echo "$RESPONSE" | jq -r '.decision')" >> $GITHUB_OUTPUT
+
+      - name: Fail if rejected
+        run: |
+          if [ "${{ steps.api.outputs.result }}" != "approved" ]; then
+            echo "❌ API rejected the changes"
+            exit 1
+          else
+            echo "✅ API approved the changes"
+          fi
