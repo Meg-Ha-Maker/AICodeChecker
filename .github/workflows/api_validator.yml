@@ -1,0 +1,42 @@
+name: External API Validator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # important to get diff
+
+      - name: Collect pull request diff
+        id: diff
+        run: |
+          git fetch origin main
+          git diff origin/main > diff.txt
+          echo "Diff collected"
+
+      - name: Send to external API
+        id: call_api
+        run: |
+          RESPONSE=$(curl -X POST "https://YOUR_API_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"diff\": \"$(sed 's/"/\\"/g' diff.txt | tr -d '\n')\"}" )
+          
+          echo "API response: $RESPONSE"
+          
+          # extract decision (must be approved or block)
+          echo "decision=$RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Fail if blocked
+        run: |
+          if [[ "${{ steps.call_api.outputs.decision }}" != "approved" ]]; then
+            echo "External API BLOCKED the PR"
+            exit 1
+          fi
+          echo "External API APPROVED the PR"
